@@ -2,12 +2,16 @@ namespace SelfInitializingFakes.Infrastructure
 {
     using System.Collections.Generic;
     using FakeItEasy.Core;
+    using Newtonsoft.Json.Linq;
 
     /// <summary>
     /// A rule that defines the behaviour of a fake during playback.
     /// </summary>
     internal class PlaybackRule : IFakeObjectCallRule
     {
+#if FEATURE_TASKS
+        private const string TaskTypeIdentifier = "Tasks.Task";
+#endif
         private readonly Queue<RecordedCall> expectedCalls;
 
         /// <summary>
@@ -46,7 +50,36 @@ namespace SelfInitializingFakes.Infrastructure
 
         private static void SetReturnValue(IInterceptedFakeObjectCall fakeObjectCall, RecordedCall recordedCall)
         {
+#if FEATURE_TASKS
+            var methodReturnType = fakeObjectCall.Method.ReturnType;
+
+            if (methodReturnType.FullName.Contains(TaskTypeIdentifier))
+            {
+                var actualType = methodReturnType.GenericTypeArguments[0];
+                var baseType = methodReturnType.BaseType;
+                var methodInfo = baseType.GetMethod("FromResult");
+                var genericMethod = methodInfo.MakeGenericMethod(actualType);
+
+                if (recordedCall.ReturnValue is JObject)
+                {
+                    JObject jObject = (JObject)recordedCall.ReturnValue;
+                    var convertedJObject = jObject.ToObject(actualType);
+                    var taskResult = genericMethod.Invoke(null, new[] { convertedJObject });
+                    fakeObjectCall.SetReturnValue(taskResult);
+                }
+                else
+                {
+                    var taskResult = genericMethod.Invoke(null, new[] { recordedCall.ReturnValue });
+                    fakeObjectCall.SetReturnValue(taskResult);
+                }
+            }
+            else
+            {
+                fakeObjectCall.SetReturnValue(recordedCall.ReturnValue);
+            }
+#else
             fakeObjectCall.SetReturnValue(recordedCall.ReturnValue);
+#endif
         }
 
         private static void SetOutAndRefValues(IInterceptedFakeObjectCall fakeObjectCall, RecordedCall recordedCall)

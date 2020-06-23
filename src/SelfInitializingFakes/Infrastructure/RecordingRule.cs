@@ -3,6 +3,7 @@ namespace SelfInitializingFakes.Infrastructure
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Reflection;
     using FakeItEasy.Core;
 
     /// <summary>
@@ -12,6 +13,9 @@ namespace SelfInitializingFakes.Infrastructure
     /// </summary>
     internal class RecordingRule : IFakeObjectCallRule
     {
+#if FEATURE_TASKS
+        private const string TaskTypeIdentifier = "Tasks.task";
+#endif
         private readonly object target;
         private Exception? recordingException;
 
@@ -84,7 +88,26 @@ namespace SelfInitializingFakes.Infrastructure
 
         private static void ApplyRecordedCall(RecordedCall recordedCall, IInterceptedFakeObjectCall fakeObjectCall)
         {
+#if FEATURE_TASKS
+            var methodReturnType = fakeObjectCall.Method.ReturnType;
+
+            if (methodReturnType.FullName.Contains(TaskTypeIdentifier))
+            {
+                var actualType = methodReturnType.GenericTypeArguments[0];
+                var baseType = methodReturnType.BaseType;
+                var methodInfo = baseType.GetMethod("FromResult");
+                var genericMethod = methodInfo.MakeGenericMethod(actualType);
+                var taskResult = genericMethod.Invoke(null, new[] { recordedCall.ReturnValue });
+
+                fakeObjectCall.SetReturnValue(taskResult);
+            }
+            else
+            {
+                fakeObjectCall.SetReturnValue(recordedCall.ReturnValue);
+            }
+#else
             fakeObjectCall.SetReturnValue(recordedCall.ReturnValue);
+#endif
 
             int outAndRefIndex = 0;
             int parameterIndex = 0;
@@ -115,6 +138,15 @@ namespace SelfInitializingFakes.Infrastructure
 
                 ++index;
             }
+
+#if FEATURE_TASKS
+            if (result != null && result.GetType().FullName.Contains(TaskTypeIdentifier))
+            {
+                var resultProperty = result.GetType().GetProperty("Result");
+                var actualResult = resultProperty.GetMethod.Invoke(result, null);
+                result = actualResult;
+            }
+#endif
 
             return new RecordedCall(call.Method.ToString(), result, outAndRefValues.ToArray());
         }

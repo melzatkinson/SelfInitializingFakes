@@ -2,6 +2,7 @@ namespace SelfInitializingFakes.Tests.Acceptance
 {
     using System;
     using System.IO;
+    using System.Threading.Tasks;
     using FakeItEasy;
     using FluentAssertions;
     using Xbehave;
@@ -13,6 +14,8 @@ namespace SelfInitializingFakes.Tests.Acceptance
             void VoidMethod(string s, out int i, ref DateTime dt);
 
             Guid NonVoidMethod();
+
+            Task<int> AsyncMethod();
         }
 
         [Scenario]
@@ -22,7 +25,8 @@ namespace SelfInitializingFakes.Tests.Acceptance
             IService realServiceWhileRecording,
             int voidMethodOutInteger,
             DateTime voidMethodRefDateTime,
-            Guid nonVoidMethodResult)
+            Guid nonVoidMethodResult,
+            Task<int> asyncMethodResult)
         {
             "Given a file path"
                 .x(() => path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".xml"));
@@ -42,6 +46,9 @@ namespace SelfInitializingFakes.Tests.Acceptance
 
                     A.CallTo(() => realServiceWhileRecording.NonVoidMethod())
                         .Returns(new Guid("6c7d8912-802a-43c0-82a2-cb811058a9bd"));
+
+                    A.CallTo(() => realServiceWhileRecording.AsyncMethod())
+                        .Returns(Task.FromResult(1234));
                 });
 
             "When I use a self-initializing fake in recording mode"
@@ -52,6 +59,7 @@ namespace SelfInitializingFakes.Tests.Acceptance
                         var fake = fakeService.Object;
                         fake.VoidMethod("firstCallKey", out voidMethodOutInteger, ref voidMethodRefDateTime);
                         nonVoidMethodResult = fake.NonVoidMethod();
+                        asyncMethodResult = fake.AsyncMethod();
                     }
                 });
 
@@ -87,6 +95,7 @@ namespace SelfInitializingFakes.Tests.Acceptance
                     voidMethodOutInteger.Should().Be(17);
                     voidMethodRefDateTime.Should().Be(new DateTime(2017, 1, 24));
                     nonVoidMethodResult.Should().Be(new Guid("6c7d8912-802a-43c0-82a2-cb811058a9bd"));
+                    asyncMethodResult.Result.Should().Be(1234);
                 });
         }
 
